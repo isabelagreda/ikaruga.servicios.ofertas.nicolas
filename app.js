@@ -1,0 +1,90 @@
+let courseIndex=0,levelIndex=0,intentIndex=0,paymentChoice='main';
+const $=id=>document.getElementById(id);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const current=()=>COURSES[courseIndex].levels[levelIndex];
+function renderFinancingRule(){
+ const description=document.querySelector('.enrollment > p:not(.eyebrow)');
+ if(!description||document.getElementById('financing-rule'))return;
+ const rule=document.createElement('p');
+ rule.id='financing-rule';
+ rule.className='small';
+ rule.innerHTML='<strong>Financiación vigente:</strong> octubre hasta 3 cuotas sin interés; noviembre y diciembre hasta 4 cuotas sin interés.';
+ description.insertAdjacentElement('afterend',rule);
+}
+const INTENTS=[
+ {label:'Viaje o cultura',title:'Aprendé para viajar o conectar con la cultura',text:n=>`Práctica útil para leer, escuchar y moverte mejor en situaciones cotidianas.`},
+ {label:'Trabajo o estudio',title:'Sumá idioma a tu perfil',text:n=>`Bases claras, práctica guiada y continuidad por niveles para avanzar con orden.`},
+ {label:'Empezar con guía',title:'Empezá con docente y grupo',text:n=>`No necesitás experiencia previa. Trabajás objetivos concretos semana a semana.`},
+ {label:'Seguir avanzando',title:'Continuá tu nivel',text:n=>`Seguís construyendo sobre lo aprendido, con contenidos y grupo acordes a tu etapa.`}
+];
+const COUNTRIES={AR:{name:'Argentina',tz:'America/Argentina/Buenos_Aires'},MX:{name:'México',tz:'America/Mexico_City'},PE:{name:'Perú',tz:'America/Lima'},EC:{name:'Ecuador',tz:'America/Guayaquil'},CL:{name:'Chile',tz:'America/Santiago'},PY:{name:'Paraguay',tz:'America/Asuncion'},CO:{name:'Colombia',tz:'America/Bogota'},HN:{name:'Honduras',tz:'America/Tegucigalpa'},BO:{name:'Bolivia',tz:'America/La_Paz'},ES:{name:'España',tz:'Europe/Madrid'},CU:{name:'Cuba',tz:'America/Havana'},US:{name:'Estados Unidos · hora del Este',tz:'America/New_York'},SV:{name:'El Salvador',tz:'America/El_Salvador'},UY:{name:'Uruguay',tz:'America/Montevideo'}};
+function renderCountryOptions(){
+ const select=$('country'),selected=COUNTRIES[select.value]?select.value:'AR';
+ select.innerHTML=Object.entries(COUNTRIES).map(([code,country])=>`<option value="${code}">${country.name}</option>`).join('');
+ select.value=selected;
+}
+function promoRule(hours,month){
+ const installments={octubre:3,noviembre:4,diciembre:4}[month];
+ if(!installments)return null;
+ return{percent:hours===3?40:30,installments,label:'TRANSFERENCIA O PAYPAL',headline:`Promo ${month}`};
+}
+function hasPublicPromo(s,hours){return !!(s&&promoRule(hours,s.month));}
+function cardRule(){return null;}
+function splitInstallments(total, installments){const cents=Math.round(total*100),base=Math.floor(cents/installments),last=cents-base*(installments-1);return{base,last,equal:base===last};}
+
+function localTimeRange(s){const country=COUNTRIES[$('country').value]||COUNTRIES.AR,[start,end]=s.time.split('–').map(t=>t.trim()),[sh,sm]=start.split(':').map(Number),[eh,em]=end.split(':').map(Number),[dd,mm]=s.start.split('/').map(Number);let duration=(eh*60+em)-(sh*60+sm);if(duration<=0)duration+=1440;const startUtc=new Date(Date.UTC(2026,mm-1,dd,sh+3,sm)),endUtc=new Date(startUtc.getTime()+duration*60000);const fmt=new Intl.DateTimeFormat('es-AR',{timeZone:country.tz,hour:'2-digit',minute:'2-digit',hour12:false,weekday:'long'});const parts=d=>Object.fromEntries(fmt.formatToParts(d).map(p=>[p.type,p.value]));const startParts=parts(startUtc),endParts=parts(endUtc),startLabel=`${startParts.hour}:${startParts.minute}`,endLabel=`${endParts.hour}:${endParts.minute}`,localDay=startParts.weekday.charAt(0).toUpperCase()+startParts.weekday.slice(1),dayNote=startParts.weekday!==endParts.weekday?`Termina ${endParts.weekday}.`:'';return{country:country.name,range:`${startLabel} – ${endLabel}`,day:localDay,dayNote};}
+function render(){const c=COURSES[courseIndex],l=current();
+$('course-picker').innerHTML=COURSES.map((c,i)=>`<button type="button" data-course="${i}" aria-pressed="${i===courseIndex}"><span class="course-name">${esc(c.name)}</span></button>`).join('');
+$('levels').innerHTML=c.levels.map((l,i)=>`<button type="button" data-level="${i}" aria-pressed="${i===levelIndex}">${esc(l.name)}</button>`).join('');
+if($('intent-picker'))$('intent-picker').innerHTML='';
+$('quick-course').innerHTML=COURSES.map((c,i)=>`<option value="${i}"${i===courseIndex?' selected':''}>${esc(c.name)}</option>`).join('');
+$('quick-level').innerHTML=c.levels.map((l,i)=>`<option value="${i}"${i===levelIndex?' selected':''}>${esc(l.name)}</option>`).join('');
+const visibleGoals=l.goals.slice(0,3),hiddenGoals=l.goals.slice(3);
+const groupsForLevel=SCHEDULES.filter(s=>s.course===l.name&&hasPublicPromo(s,c.hours)),groupCount=groupsForLevel.length,certLabel=l.uai?'Certificado UAI':l.name==='Coreano 3'?'Asistencia':'Certificado IKARUGA';
+$('course-detail').innerHTML=`<div class="course-detail-grid"><div><p class="eyebrow">${levelIndex===0?'TU PUNTO DE PARTIDA':'SEGUÍ AVANZANDO'}</p><h3 class="course-heading">${esc(l.name)}</h3>${l.description?`<p class="course-desc">${esc(l.description)}</p>`:''}<div class="quick-summary"><div><strong>${c.hours} h semanales</strong><span>en vivo</span></div><div><strong>${groupCount?groupCount+' horarios':'A consultar'}</strong><span>${groupCount?'disponibles':'próxima apertura'}</span></div><div><strong>${esc(certLabel)}</strong><span>según programa</span></div></div><details class="program-details" open><summary>Contenidos principales</summary><ol class="goals">${visibleGoals.map(g=>`<li>${esc(g)}</li>`).join('')}${hiddenGoals.map(g=>`<li class="secondary-goal">${esc(g)}</li>`).join('')}</ol></details><a class="text-link" href="${esc(l.pdf)}" download>Descargar programa completo en PDF ↓</a></div><aside class="benefits"><h3>Lo que recibís</h3><div class="benefit main-benefit"><strong>Comunidad IKARUGA</strong>Docente, grupo por nivel y acompañamiento para sostener la práctica.</div><details class="benefit-drop" open><summary>Clases, material y práctica</summary><div class="benefit"><strong>${c.hours} horas semanales</strong>Clases en vivo, corrección y práctica guiada.</div><div class="benefit"><strong>${l.campus?'Campus virtual':'Proyecto final en PC'}</strong>${l.campus?'Materiales de cursada.':'Aplicá lo aprendido en un videojuego 3D ejecutable.'}${l.recordings?' Grabaciones incluidas.':''}</div></details><details class="benefit-drop"><summary>Certificación</summary><div class="benefit"><strong>${l.uai?'Certificación IKARUGA + respaldo UAI':l.name==='Coreano 3'?'Certificado de asistencia':'Certificación institucional IKARUGA'}</strong>Según los requisitos del programa.</div></details>${l.extras.length?`<div class="community"><span>Comunidad IKARUGA</span><strong>Más que la clase semanal</strong>${l.extras.map(e=>`<p>${esc(e.replace(/^[^A-Za-zÁÉÍÓÚáéíóúÑñ0-9]+/,''))}</p>`).join('')}</div>`:''}</aside></div>`;
+$('cert-text').textContent=l.uai?`Para ${l.name}, la propuesta incluye certificación IKARUGA con respaldo UAI.`:l.name==='Coreano 3'?'Coreano 3 indica certificado de asistencia según requisitos del programa.':`En ${l.name} recibís certificación institucional IKARUGA según requisitos del programa.`;const uaiVisible=!!l.uai;if($('uai-link')){ $('uai-link').hidden=!uaiVisible; $('uai-link').style.display=uaiVisible?'':'none'; $('uai-link').textContent=uaiVisible?'Descargar muestra UAI en PDF ↓':'';}if($('uai-figure')){ $('uai-figure').hidden=!uaiVisible; $('uai-figure').style.display=uaiVisible?'':'none'; $('uai-figure').setAttribute('aria-hidden',uaiVisible?'false':'true');}
+$('selected-name').textContent=l.name;
+const groups=SCHEDULES.filter(s=>s.course===l.name&&hasPublicPromo(s,c.hours));$('group').innerHTML=groups.length?groups.map((s,i)=>`<option value="${SCHEDULES.indexOf(s)}">${esc(s.month[0].toUpperCase()+s.month.slice(1))} · ${esc(s.day)} · Comisión ${esc(s.group)}</option>`).join(''):'<option value="">Sin comisión promocionada</option>';
+renderPayment();}
+function renderPayment(){const l=current(),s=$('group').value!==''?SCHEDULES[Number($('group').value)]:null,cur=$('currency').value;
+const money=n=>new Intl.NumberFormat('es-AR',{minimumFractionDigits:Number.isInteger(n)?0:2,maximumFractionDigits:2}).format(n)+' '+cur;
+const quotaSummary=(total,parts,n,method)=>`<div class="quota-box"><span>También podés pagar en cuotas</span><strong>${n} cuotas sin interés de ${parts.equal?money(parts.base/100):'desde '+money(parts.base/100)}</strong><small>${method}</small></div>${!parts.equal?`<p class="quota-note">Por redondeo: ${n-1} cuotas de ${money(parts.base/100)} y una última de ${money(parts.last/100)}.</p>`:''}`;
+if(s){const local=localTimeRange(s);$('schedule').innerHTML=`<p class="when">${esc(local.day)}<br><span>${esc(local.range)} h</span></p><p class="small">Horario local para ${esc(local.country)} calculado con el inicio ${esc(s.start)}/2026. En Argentina: ${esc(s.day)} ${esc(s.time)} h.${local.dayNote?' '+esc(local.dayNote):''}</p><dl><div><dt>Inicio</dt><dd>${esc(s.start)}/2026</dd></div><div><dt>Finalización</dt><dd>${esc(s.end)}/2027</dd></div><div><dt>Recorrido</dt><dd>${s.modules} módulos</dd></div><div><dt>Modalidad</dt><dd>Grupal online</dd></div></dl>`;}else $('schedule').innerHTML='<p class="empty">Podés conocer el programa y consultar con ISA la próxima apertura de este nivel.</p>';
+const tables={
+ threeH4:{costs:{ARS:[172000,277000,49000],USD:[86,89,34],MXN:[1670,1720,590]},discounts:{45:{ARS:579000,USD:273,MXN:5210},40:{ARS:628000,USD:294,MXN:5630},35:{ARS:676000,USD:316,MXN:6050},30:{ARS:724000,USD:338,MXN:6470},25:{ARS:772000,USD:360,MXN:6890},20:{ARS:820000,USD:381,MXN:7310},15:{ARS:869000,USD:403,MXN:7730}}},
+ threeH5:{costs:{ARS:[172000,277000,49000],USD:[86,89,34],MXN:[1670,1720,590]},discounts:{45:{ARS:674000,USD:320,MXN:6130},40:{ARS:731000,USD:346,MXN:6630},35:{ARS:787000,USD:372,MXN:7130},30:{ARS:844000,USD:398,MXN:7640},25:{ARS:901000,USD:424,MXN:8140},20:{ARS:958000,USD:450,MXN:8640},15:{ARS:1015000,USD:477,MXN:9150}}},
+ english:{costs:{ARS:[79000,107000,0],USD:[40,34,0],MXN:[770,670,0]},discounts:{30:{ARS:296000,USD:135,MXN:2620},25:{ARS:318000,USD:145,MXN:2800},20:{ARS:339000,USD:155,MXN:2990},15:{ARS:360000,USD:165,MXN:3180}}},
+ italian:{costs:{ARS:[79000,107000,49000],USD:[40,34,34],MXN:[770,670,620]},discounts:{30:{ARS:345000,USD:169,MXN:3240},25:{ARS:367000,USD:179,MXN:3420},20:{ARS:388000,USD:188,MXN:3610},15:{ARS:409000,USD:198,MXN:3800}}},
+ games:{costs:{ARS:[138000,153000,0],USD:[65,80,0],MXN:[1620,1550,0]},discounts:{45:{ARS:387000,USD:187,MXN:4410},40:{ARS:423000,USD:204,MXN:4810},35:{ARS:458000,USD:221,MXN:5210},30:{ARS:493000,USD:238,MXN:5620},25:{ARS:528000,USD:255,MXN:5980},20:{ARS:564000,USD:272,MXN:6420},15:{ARS:599000,USD:289,MXN:6800}}}
+};
+const type=courseIndex===4?'english':courseIndex===6?'italian':courseIndex===8?'games':s?.modules===5?'threeH5':'threeH4';
+const row=tables[type].costs[cur];
+let quote='';
+if(s){const rule=promoRule(COURSES[courseIndex].hours,s.month),total=row[0]*s.modules+row[1]+row[2],discountBase=row[0]*s.modules+row[1];
+const choices=[];
+if(rule){const promo=tables[type].discounts[rule.percent][cur],parts=splitInstallments(promo,rule.installments);
+choices.push({id:'main',html:`<span class="promo-tag">${rule.percent}% DE DESCUENTO · ${esc(s.month.toUpperCase())}</span><p class="price-label">Valor promocional por pago total</p><p class="amount"><span>Pagás hoy</span>${money(promo)}</p>${quotaSummary(promo,parts,rule.installments,'Transferencia o PayPal')}<p class="small">El descuento aplica sobre cursado, matrícula y materiales. El certificado, cuando corresponde, se suma sin descuento.</p>`,quote:{label:`${rule.percent}% descuento · Transferencia/PayPal`,total:money(promo),installments:`${rule.installments} cuotas sin interés${parts.equal?' de '+money(parts.base/100):`: ${rule.installments-1} de ${money(parts.base/100)} y una última de ${money(parts.last/100)}`}`,method:'Transferencia/PayPal'}});
+}
+const cRule=cardRule(COURSES[courseIndex].hours,s.month,$('country').value,cur);
+if(cRule){const cardTotal=Math.round(discountBase*(1-cRule.percent/100)+row[2]),parts=splitInstallments(cardTotal,cRule.installments);
+choices.push({id:'card3',html:`<span class="promo-tag">${cRule.label}</span><p class="price-label">${cRule.percent}% de descuento</p><p class="amount"><span>${cRule.installments} cuotas de</span>${money(parts.base/100)}</p>${quotaSummary(cardTotal,parts,cRule.installments,'Tarjeta de crédito')}<p class="small">Solo disponible cuando elegís Argentina/ARS o México/MXN.</p>`,quote:{label:`${cRule.percent}% descuento · Tarjeta de crédito`,total:money(cardTotal),installments:`${cRule.installments} cuotas sin interés${parts.equal?' de '+money(parts.base/100):`: ${cRule.installments-1} de ${money(parts.base/100)} y una última de ${money(parts.last/100)}`}`,method:'Tarjeta de crédito'}});
+}
+if(!choices.length){paymentChoice='main';quote='';}else{if(!choices.some(o=>o.id===paymentChoice))paymentChoice='main';const selected=choices.find(o=>o.id===paymentChoice)||choices[0];quote=selected.quote;}
+$('price').innerHTML=`<div class="regular"><h3>Valor regular</h3><div class="price-line"><span>Cursada: ${s.modules} módulos · cuota mensual ${money(row[0])}</span><span>${money(row[0]*s.modules)}</span></div><div class="price-line"><span>Matrícula y materiales</span><span>${money(row[1])}</span></div>${row[2]?`<div class="price-line"><span>Certificado</span><span>${money(row[2])}</span></div>`:''}<div class="price-line"><strong>Total regular</strong><span>${money(total)}</span></div></div><div class="payment-choice"><h3>Elegí cómo pagar</h3><p class="payment-helper">Tocá una opción. Esa elección se envía en el WhatsApp.</p>${choices.length?choices.map((o,i)=>`<label class="${o.id==='main'?'promo':'card-option'}"><input type="radio" name="payment-choice" value="${o.id}" ${o.id===paymentChoice?'checked':''}>${o.html}</label>`).join(''):'<p class="empty">Esta comisión no tiene promoción vigente para publicar.</p>'}</div><p class="small">Transferencia o PayPal para pagos internacionales.${cRule?' La opción con tarjeta se muestra solo si coincide país y moneda.':''}${l.name==='Coreano 3'?' Confirmá con ISA el alcance del certificado.':''}</p>`;
+}else $('price').innerHTML='<p class="price-label">Sin promoción publicada</p><h3>Consultá la próxima apertura.</h3><p>ISA te puede orientar sobre el nivel y avisarte cuando se abra una comisión con promoción vigente.</p>';
+const local=s?localTimeRange(s):null;
+const msgLines=['Hola ISA, vi la propuesta en la página de IKARUGA.','',`Curso: ${l.name}`];if(s){msgLines.push(`Comisión: ${s.group}`);msgLines.push(`Horario local: ${local.day} ${local.range} h (${local.country})`);msgLines.push(`Horario Argentina: ${s.day} ${s.time} h`);msgLines.push(`Inicio: ${s.start}/2026`);msgLines.push(`Recorrido: ${s.modules} módulos`);}if(quote){msgLines.push('');msgLines.push(`Pago elegido: ${quote.label}`);msgLines.push(`Total: ${quote.total}`);msgLines.push(`Cuotas: ${quote.installments}`);msgLines.push(`Medio: ${quote.method}`);}msgLines.push('');msgLines.push('Quiero consultar disponibilidad y pasos para inscribirme.');const msg=msgLines.join('\n');
+$('contact').href='https://wa.me/5493413483263?text='+encodeURIComponent(msg);}
+$('course-picker').addEventListener('click',e=>{const b=e.target.closest('[data-course]');if(!b)return;courseIndex=Number(b.dataset.course);levelIndex=0;render();$('course-picker').querySelector(`[data-course="${courseIndex}"]`).focus({preventScroll:true});});
+$('levels').addEventListener('click',e=>{const b=e.target.closest('[data-level]');if(!b)return;levelIndex=Number(b.dataset.level);render();$('levels').querySelector(`[data-level="${levelIndex}"]`).focus({preventScroll:true});});
+if($('intent-picker'))$('intent-picker').addEventListener('click',e=>{const b=e.target.closest('[data-intent]');if(!b)return;intentIndex=Number(b.dataset.intent);render();$('intent-picker').querySelector(`[data-intent="${intentIndex}"]`).focus({preventScroll:true});});
+$('quick-course').addEventListener('change',e=>{courseIndex=Number(e.target.value);levelIndex=0;render();});
+$('quick-level').addEventListener('change',e=>{levelIndex=Number(e.target.value);render();});
+$('price').addEventListener('change',e=>{if(e.target.name!=='payment-choice')return;paymentChoice=e.target.value;renderPayment();});
+$('group').addEventListener('change',renderPayment);$('currency').addEventListener('change',renderPayment);$('country').addEventListener('change',()=>{const country=$('country').value;$('currency').value=country==='AR'?'ARS':country==='MX'?'MXN':'USD';renderPayment();});renderCountryOptions();renderFinancingRule();render();
+if(document.modelContext?.registerTool){
+ const lifecycle=new AbortController();
+ Promise.resolve(document.modelContext.registerTool({name:'select_course_level',title:'Ver un curso IKARUGA',description:'Selecciona un curso y nivel en la página y devuelve contenidos, programa y comisiones. No inscribe ni envía mensajes.',inputSchema:{type:'object',properties:{level:{type:'string',enum:COURSES.flatMap(c=>c.levels.map(l=>l.name))}},required:['level'],additionalProperties:false},annotations:{readOnlyHint:false},execute(input){const ci=COURSES.findIndex(c=>c.levels.some(l=>l.name===input?.level));if(ci<0)throw new Error('Nivel no disponible');courseIndex=ci;levelIndex=COURSES[ci].levels.findIndex(l=>l.name===input.level);render();$('cursos').scrollIntoView();return{level:current().name,goals:current().goals,program:new URL(''+current().pdf,location.href).href,schedules:SCHEDULES.filter(s=>s.course===current().name)};}},{signal:lifecycle.signal})).catch(()=>{});
+ window.addEventListener('pagehide',()=>lifecycle.abort(),{once:true});
+}
+
